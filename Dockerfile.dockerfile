@@ -10,6 +10,7 @@ RUN apt install software-properties-common -y
 RUN add-apt-repository ppa:ethereum/ethereum
 RUN apt update
 RUN apt install build-essential pkg-config libssl-dev git curl solc -y
+RUN apt install vim -y
 
 RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
 # npm
