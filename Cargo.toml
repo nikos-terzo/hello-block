@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 ethers = { version = "0.6.2", default-features = false, features = ["legacy"] }
+rust-ini = "0.18"

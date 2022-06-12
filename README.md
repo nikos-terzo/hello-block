@@ -10,6 +10,7 @@ The clients can send messages to other clients using the other's client uploaded
 ## Environment
 * Running with a [ganache-cli](https://hub.docker.com/r/trufflesuite/ganache-cli/) docker image open to use as a test blockchain.
 * I have vim as a preferred git editor, and I install it in Dockerfile, feel free to change the line.
+* To run on your environment, change ChangeMe.ini to match it.
 
 ## Limitations
 Initially, the messages will be stored as simple Strings, a vulnerability which we will resolve later on.
