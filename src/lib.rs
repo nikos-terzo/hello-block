@@ -13,26 +13,26 @@ pub struct Contact {
     pub client_address: Address
 }
 
-fn get_ganache_url(ini_file: &str) -> Result<&str, ini::Error> {
+fn get_ganache_url(ini_file: &str) -> String {
     let conf = Ini::load_from_file(ini_file)
         .expect("could not load ini file");
     
     let key = "Ganache URL";
-    let ganache_url = conf.section(None::<String>).unwrap().get(key)
-        .expect(&format!("could not find key: {}", key));
-    Ok(ganache_url.to_string())
+    conf.section(None::<String>).unwrap().get(key)
+        .expect(&format!("could not find key: {}", key))
+        .to_string()
 }
 
 fn get_provider(ini_file: &str) -> Result<Provider<Http>, url::ParseError> {
-    let url = get_ganache_url(ini_file)
-        .expect("could not get ganache_url");
+    let url = get_ganache_url(ini_file);
     Provider::<Http>::try_from(url)
 }
 
-fn get_contacts(ini_file: &str) -> Result<std::vec::Vec<Contact>, ini::Error> {
+fn get_contacts(ini_file: &str) -> std::vec::Vec<Contact> {
+    let mut contacts: std::vec::Vec<Contact> = std::vec::Vec::<Contact>::new();
+
     let conf = Ini::load_from_file(ini_file)
         .expect("could not load ini file");
-    let mut contacts: std::vec::Vec<Contact> = std::vec::Vec::<Contact>::new();
 
     let contacts_section_ini = conf.section(Some("Contacts"))
         .expect("could not find section Contacts");
@@ -53,7 +53,7 @@ fn get_contacts(ini_file: &str) -> Result<std::vec::Vec<Contact>, ini::Error> {
         });
     }
 
-    Ok(contacts)
+    contacts
 }
 
 fn get_compiler_output(sol_file: &str) -> Result<CompilerOutput, SolcError> {
@@ -84,13 +84,12 @@ mod tests {
     #[test]
     fn ganache_url_parses_from_ini() {
         // relative path, bad practice
-        let ganache_url = get_ganache_url("./ChangeMe.ini")
-            .expect("could not get ganache_url");
-            assert_eq!(&ganache_url[..7], "http://", "ganache_url did not start with \"http://\"");
-        }
-        
-        #[test]
-        fn provider_instatiates() {
+        let ganache_url = get_ganache_url("./ChangeMe.ini");
+        assert_eq!(&ganache_url[..7], "http://", "ganache_url did not start with \"http://\"");
+    }
+    
+    #[test]
+    fn provider_instatiates() {
         // relative path, bad practice
         get_provider("./ChangeMe.ini")
             .expect("could not instantiate HTTP Provider");
@@ -98,8 +97,7 @@ mod tests {
 
     #[test]
     fn has_parsable_contacts() {
-        let contacts = get_contacts("./ChangeMe.ini")
-            .expect("could not retrieve contacts");
+        let contacts = get_contacts("./ChangeMe.ini");
         assert!(contacts.len() > 0);
     }
 
