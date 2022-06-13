@@ -6,7 +6,14 @@ use ethers::abi::Abi;
 use ethers::contract::Contract;
 use ethers::types::{Address, H256};
 
-fn get_ganache_url(ini_file: &str) -> Result<String, ini::Error> {
+#[derive(Debug)]
+pub struct Contact {
+    pub friendly_name: String,
+    pub contract_address: Address,
+    pub client_address: Address
+}
+
+fn get_ganache_url(ini_file: &str) -> Result<&str, ini::Error> {
     let conf = Ini::load_from_file(ini_file)
         .expect("could not load ini file");
     
@@ -20,6 +27,33 @@ fn get_provider(ini_file: &str) -> Result<Provider<Http>, url::ParseError> {
     let url = get_ganache_url(ini_file)
         .expect("could not get ganache_url");
     Provider::<Http>::try_from(url)
+}
+
+fn get_contacts(ini_file: &str) -> Result<std::vec::Vec<Contact>, ini::Error> {
+    let conf = Ini::load_from_file(ini_file)
+        .expect("could not load ini file");
+    let mut contacts: std::vec::Vec<Contact> = std::vec::Vec::<Contact>::new();
+
+    let contacts_section_ini = conf.section(Some("Contacts"))
+        .expect("could not find section Contacts");
+    
+    for (key, value) in contacts_section_ini.iter() {
+        let addresses: std::vec::Vec<&str> = value.split(" ").collect();
+        assert_eq!(addresses.len(), 2, "Contact {} should have 2 addresses", key);
+
+        let contract_address = addresses[0].parse::<Address>()
+            .expect(&format!("Contact {}: could not parse contract address", key));
+        let client_address = addresses[1].parse::<Address>()
+            .expect(&format!("Contact {}: could not parse client address", key));
+
+        contacts.push(Contact{
+            friendly_name: key.to_string(),
+            contract_address,
+            client_address
+        });
+    }
+
+    Ok(contacts)
 }
 
 fn get_compiler_output(sol_file: &str) -> Result<CompilerOutput, SolcError> {
@@ -60,6 +94,13 @@ mod tests {
         // relative path, bad practice
         get_provider("./ChangeMe.ini")
             .expect("could not instantiate HTTP Provider");
+    }
+
+    #[test]
+    fn has_parsable_contacts() {
+        let contacts = get_contacts("./ChangeMe.ini")
+            .expect("could not retrieve contacts");
+        assert!(contacts.len() > 0);
     }
 
     #[tokio::test]
