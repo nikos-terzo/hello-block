@@ -1,23 +1,46 @@
 use ini::Ini;
+use ethers::solc::{Solc, CompilerOutput};
+use ethers::solc::error::SolcError;
+use ethers::providers::{Provider, Http};
+use ethers::abi::Abi;
+use ethers::contract::Contract;
+use ethers::types::{Address, H256};
 
-fn get_ganache_host(ini_file: &str) -> String {
+fn get_ganache_url(ini_file: &str) -> Result<String, ini::Error> {
     let conf = Ini::load_from_file(ini_file)
         .expect("could not load ini file");
     
-    let key = "GanacheHost";
-    let ganache_host = conf.section(None::<String>).unwrap().get(key)
+    let key = "Ganache URL";
+    let ganache_url = conf.section(None::<String>).unwrap().get(key)
         .expect(&format!("could not find key: {}", key));
-    ganache_host.to_string()
+    Ok(ganache_url.to_string())
+}
+
+fn get_provider(ini_file: &str) -> Result<Provider<Http>, url::ParseError> {
+    let url = get_ganache_url(ini_file)
+        .expect("could not get ganache_url");
+    Provider::<Http>::try_from(url)
+}
+
+fn get_compiler_output(sol_file: &str) -> Result<CompilerOutput, SolcError> {
+    Solc::default().compile_source(sol_file)
+}
+
+fn get_compiled_abi<'a, 'b>(compiled: &'a CompilerOutput, sol_file: &'b str) -> Option<&'a Abi> {
+    compiled.get(sol_file, "Chatter")
+        .expect("could not find contract Chatter")
+        .abi
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::*;
+
     #[test]
     fn chatter_compiles() {
-        use ethers::solc::Solc;
 
         // relative path, bad practice
-        let compiled = Solc::default().compile_source("./contract_src/Chatter.sol")
+        let compiled = get_compiler_output("./contract_src/Chatter.sol")
             .expect("could not generate compiler output");
         
         println!("{:?}", compiled.errors);
@@ -25,23 +48,43 @@ mod tests {
     }
 
     #[test]
-    fn ganache_host_parses_from_ini() {
-        use crate::get_ganache_host;
-
+    fn ganache_url_parses_from_ini() {
         // relative path, bad practice
-        let ganache_host = get_ganache_host("./ChangeMe.ini");
-        assert_eq!(&ganache_host[..7], "http://", "ganache_host did not start with \"http://\"");
-    }
-    
-    #[test]
-    fn provider_instatiates() {
-        use crate::get_ganache_host;
-        use ethers::providers::{Provider, Http};
+        let ganache_url = get_ganache_url("./ChangeMe.ini")
+            .expect("could not get ganache_url");
+            assert_eq!(&ganache_url[..7], "http://", "ganache_url did not start with \"http://\"");
+        }
         
+        #[test]
+        fn provider_instatiates() {
         // relative path, bad practice
-        let ganache_host = get_ganache_host("./ChangeMe.ini");
-        let _provider = Provider::<Http>::try_from(ganache_host)
+        get_provider("./ChangeMe.ini")
             .expect("could not instantiate HTTP Provider");
+    }
+
+    #[tokio::test]
+    async fn contract_exists() {
+        let provider = get_provider("./ChangeMe.ini")
+            .expect("could not instantiate HTTP Provider");
+        
+        let address = "6C75C15717887faBfBC482c0d5Dce3659A94dA65".parse::<Address>()
+            .expect("could not parse address");
+
+        let sol_file = "./contract_src/Chatter.sol";
+        let compiled = get_compiler_output(sol_file)
+            .expect("could not generate compiler output");
+        let abi = get_compiled_abi(&compiled, sol_file)
+            .expect("abi is None");
+    
+        let contract = Contract::new(address, abi.to_owned(), provider);
+        let contract_call = contract
+            .method::<_, H256>("messageMe", "hi".to_owned())
+            .expect("could not create contract call");
+        
+        // The following will try to send a message to a "Mutable" contract method and it should fail
+        // even if the contract exists, as it does not have an address_from to pay the gas fee?
+        let _tx_hash = contract_call.call().await
+            .expect("contract could not be called");
     }
 
 }
