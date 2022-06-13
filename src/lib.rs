@@ -66,6 +66,15 @@ fn get_compiled_abi<'a, 'b>(compiled: &'a CompilerOutput, sol_file: &'b str) -> 
         .abi
 }
 
+fn provider_get_contract(sol_file: &str, contact: &Contact, provider: Provider<Http>) -> Contract<Provider<Http>> {
+    let compiled = get_compiler_output(sol_file)
+        .expect("could not generate compiler output");
+    let abi = get_compiled_abi(&compiled, sol_file)
+        .expect("abi is None");
+
+    Contract::new(contact.contract_address, abi.to_owned(), provider)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::*;
@@ -122,24 +131,22 @@ mod tests {
         let provider = get_provider("./ChangeMe.ini")
             .expect("could not instantiate HTTP Provider");
         
-        let address = "6C75C15717887faBfBC482c0d5Dce3659A94dA65".parse::<Address>()
-            .expect("could not parse address");
+        let contacts = get_contacts("./ChangeMe.ini");
 
-        let sol_file = "./contract_src/Chatter.sol";
-        let compiled = get_compiler_output(sol_file)
-            .expect("could not generate compiler output");
-        let abi = get_compiled_abi(&compiled, sol_file)
-            .expect("abi is None");
-    
-        let contract = Contract::new(address, abi.to_owned(), provider);
-        let contract_call = contract
-            .method::<_, H256>("messageMe", "hi".to_owned())
-            .expect("could not create contract call");
-        
-        // The following will try to send a message to a "Mutable" contract method and it should fail
-        // even if the contract exists, as it does not have an address_from to pay the gas fee?
-        let _tx_hash = contract_call.call().await
-            .expect("contract could not be called");
+        for contact in contacts {
+            let contract = provider_get_contract("./contract_src/Chatter.sol", &contact, provider.clone());
+
+            let contract_call = contract
+                .method::<_, H256>("messageMe", "hi".to_owned())
+                .expect(&format!("could not create contract call for {}", contact.friendly_name));
+
+            // The following will try to send a message to a "Mutable" contract method and it should fail
+            // even if the contract exists, as it does not have an address_from to pay the gas fee.
+            // The contract is created using provider, not a client. Maybe call instead of send saves the day?
+            // The above are all speculations based on my understanding of evm and contracts
+            let _tx_hash = contract_call.call().await
+                .expect(&format!("{}'s contract could not be called", contact.friendly_name));
+        }
     }
 
 }
