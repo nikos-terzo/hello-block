@@ -1,7 +1,7 @@
 use ini::Ini;
 use ethers::solc::{Solc, CompilerOutput};
 use ethers::solc::error::SolcError;
-use ethers::providers::{Provider, Http};
+use ethers::providers::{Provider, Http, Middleware};
 use ethers::abi::Abi;
 use ethers::contract::Contract;
 use ethers::types::{Address, H256};
@@ -99,6 +99,22 @@ mod tests {
     fn has_parsable_contacts() {
         let contacts = get_contacts("./ChangeMe.ini");
         assert!(contacts.len() > 0);
+    }
+
+    #[tokio::test]
+    async fn contacts_addresses_exist() {
+        let provider = get_provider("./ChangeMe.ini")
+            .expect("could not instantiate HTTP Provider");
+        let contacts = get_contacts("./ChangeMe.ini");
+
+        let accounts = provider.get_accounts()
+            .await
+            .expect("could not retrieve accounts");
+        
+        for contact in contacts {
+            assert!(accounts.contains(&contact.contract_address), "{}'s contract address not found", contact.friendly_name);
+            assert!(accounts.contains(&contact.client_address), "{}'s client address not found", contact.friendly_name);
+        }
     }
 
     #[tokio::test]
