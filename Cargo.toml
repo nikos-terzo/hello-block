@@ -10,3 +10,4 @@ ethers = { version = "0.6.2", default-features = false, features = ["legacy"] }
 tokio = { version = "1.19.2", features = ["full"] }
 rust-ini = "0.18"
 url = "2.2.2"
+hex = "0.4.3"

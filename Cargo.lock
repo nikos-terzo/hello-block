@@ -1133,6 +1133,7 @@ name = "hello-block"
 version = "0.1.0"
 dependencies = [
  "ethers",
+ "hex",
  "rust-ini",
  "tokio",
  "url",
