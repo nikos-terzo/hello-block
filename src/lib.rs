@@ -1,13 +1,12 @@
 use ini::Ini;
 use ethers::solc::{Solc, CompilerOutput};
 use ethers::solc::error::SolcError;
-use ethers::etherscan::Client;
-use ethers::providers::{Provider, Http, Middleware};
+use ethers::providers::{Provider, Http, ProviderError};
 use ethers::signers::{LocalWallet, WalletError};
 use ethers::middleware::SignerMiddleware;
 use ethers::abi::Abi;
 use ethers::contract::{Contract, ContractFactory, ContractError};
-use ethers::types::{Address, H256, BlockId};
+use ethers::types::{Address, H256, TransactionReceipt};
 
 #[derive(Debug)]
 pub struct Contact {
@@ -16,7 +15,7 @@ pub struct Contact {
     pub client_address: Address
 }
 
-fn get_ganache_url(ini_file: &str) -> String {
+pub fn get_ganache_url(ini_file: &str) -> String {
     let conf = Ini::load_from_file(ini_file)
         .expect("could not load ini file");
     
@@ -26,12 +25,12 @@ fn get_ganache_url(ini_file: &str) -> String {
         .to_string()
 }
 
-fn get_provider(ini_file: &str) -> Result<Provider<Http>, url::ParseError> {
+pub fn get_provider(ini_file: &str) -> Result<Provider<Http>, url::ParseError> {
     let url = get_ganache_url(ini_file);
     Provider::<Http>::try_from(url)
 }
 
-fn get_wallet(ini_file: &str) -> Result<LocalWallet, WalletError>  {
+pub fn get_wallet(ini_file: &str) -> Result<LocalWallet, WalletError>  {
     let conf = Ini::load_from_file(ini_file)
         .expect("could not load ini file");
     
@@ -41,7 +40,7 @@ fn get_wallet(ini_file: &str) -> Result<LocalWallet, WalletError>  {
         .parse::<LocalWallet>()
 }
 
-fn get_contacts(ini_file: &str) -> std::vec::Vec<Contact> {
+pub fn get_contacts(ini_file: &str) -> std::vec::Vec<Contact> {
     let mut contacts: std::vec::Vec<Contact> = std::vec::Vec::<Contact>::new();
 
     let conf = Ini::load_from_file(ini_file)
@@ -69,17 +68,17 @@ fn get_contacts(ini_file: &str) -> std::vec::Vec<Contact> {
     contacts
 }
 
-fn get_compiler_output(sol_file: &str) -> Result<CompilerOutput, SolcError> {
+pub fn get_compiler_output(sol_file: &str) -> Result<CompilerOutput, SolcError> {
     Solc::default().compile_source(sol_file)
 }
 
-fn get_compiled_abi<'a, 'b>(compiled: &'a CompilerOutput, sol_file: &'b str) -> Option<&'a Abi> {
+pub fn get_compiled_abi<'a, 'b>(compiled: &'a CompilerOutput, sol_file: &'b str) -> Option<&'a Abi> {
     compiled.get(sol_file, "Chatter")
         .expect("could not find contract Chatter")
         .abi
 }
 
-fn provider_get_contract(sol_file: &str, contact: &Contact, provider: Provider<Http>) -> Contract<Provider<Http>> {
+pub fn provider_get_contract(sol_file: &str, contact: &Contact, provider: Provider<Http>) -> Contract<Provider<Http>> {
     let compiled = get_compiler_output(sol_file)
         .expect("could not generate compiler output");
     let abi = get_compiled_abi(&compiled, sol_file)
@@ -88,7 +87,7 @@ fn provider_get_contract(sol_file: &str, contact: &Contact, provider: Provider<H
     Contract::new(contact.contract_address, abi.to_owned(), provider)
 }
 
-async fn upload_contract(sol_file: &str, client: std::sync::Arc<SignerMiddleware<Provider<Http>, LocalWallet>>) -> Result<Contract<SignerMiddleware<Provider<Http>, LocalWallet>>, ContractError<SignerMiddleware<Provider<Http>, LocalWallet>>> {
+pub async fn upload_contract(sol_file: &str, client: std::sync::Arc<SignerMiddleware<Provider<Http>, LocalWallet>>) -> Result<Contract<SignerMiddleware<Provider<Http>, LocalWallet>>, ContractError<SignerMiddleware<Provider<Http>, LocalWallet>>> {
     
     let compiled = get_compiler_output(sol_file)
         .expect("could not generate compiler output");
@@ -109,9 +108,22 @@ async fn upload_contract(sol_file: &str, client: std::sync::Arc<SignerMiddleware
         .await
 }
 
+pub async fn send_message(contract: &Contract<SignerMiddleware<Provider<Http>, LocalWallet>>, msg: &str) -> Result<Option<TransactionReceipt>, ProviderError> {
+    let call = contract.method::<_, H256>("messageMe", msg.to_owned())
+        .expect("could not create contract call");
+
+    let pending_tx = call.send()
+        .await
+        .expect("something went wrong sending the message");
+
+    pending_tx.await
+}
+
 #[cfg(test)]
 mod tests {
     use crate::*;
+    use ethers::types::BlockId;
+    use ethers::providers::Middleware;
 
     #[test]
     fn chatter_compiles() {
@@ -213,4 +225,36 @@ mod tests {
         println!("contract_address client_address: {} {}", hex::encode(contract2.address()), hex::encode(client2.address()));
     }
 
+    #[tokio::test]
+    async fn sends_message() {
+        let ini_file = "Chatter1-conf.ini";
+        let provider = get_provider(ini_file)
+            .expect("could not instantiate HTTP Provider");
+
+        // contract abi
+        let sol_file = "./contract_src/Chatter.sol";
+        let compiled = get_compiler_output(sol_file)
+            .expect("could not generate compiler output");
+        let abi: Abi = compiled.get(sol_file, "Chatter")
+            .expect("could not find contract Chatter")
+            .abi
+            .expect("abi is None")
+            .to_owned();
+
+        // client (Chatter1)
+        let client1 = SignerMiddleware::new(
+            provider.clone(),
+            get_wallet(ini_file)
+                .expect("could not parse private key")
+            );
+        let client1 = std::sync::Arc::new(client1);
+
+        // contract to send message to
+        let contact = &get_contacts(ini_file)[0];
+        let contract = Contract::new(contact.contract_address, abi, client1);
+
+        send_message(&contract, "Hello Chatter2!")
+            .await
+            .expect("could not receive transaction receipt");
+    }
 }
