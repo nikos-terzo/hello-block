@@ -1135,6 +1135,7 @@ dependencies = [
  "ethers",
  "hex",
  "rust-ini",
+ "serde_json",
  "tokio",
  "url",
 ]
